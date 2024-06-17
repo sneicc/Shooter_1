@@ -28,12 +28,15 @@ public class CharacterMovement : MonoBehaviour
     [Range(0f, 100f)]
     public float MouseHorizontalSensitivity;
 
-    private bool IsWalking = false;
     private float _pitch;
     private Vector3 _groundNormal;
-    private Vector3 testDir;
     private float _lastTimeJumped;
-    private float _characterSpeed;
+    //private float _characterSpeed;
+
+#if DEBUG
+    private Vector3 _idealDirection;
+
+#endif
 
     public bool IsGrounded { get; private set; } 
 
@@ -123,13 +126,16 @@ public class CharacterMovement : MonoBehaviour
         {
             direction *= WalkSpeed;
             direction = GetDirectionReorientedOnSlope(direction.normalized, _groundNormal) * direction.magnitude;
-            testDir = direction;
         }
         else
         {
             direction *= AirSpeed;
             direction.y += _characterController.velocity.y - Gravity;
-        } 
+        }
+
+#if DEBUG
+        _idealDirection = direction;
+#endif
 
         _characterController.Move(direction * Time.deltaTime);  
 
@@ -143,10 +149,6 @@ public class CharacterMovement : MonoBehaviour
 
     public Vector3 GetDirectionReorientedOnSlope(Vector3 direction, Vector3 slopeNormal)
     {
-        if(direction.magnitude > 0)
-        {
-            int a = 84889;
-        }
         Vector3 directionRight = Vector3.Cross(direction, transform.up);
         Vector3 correctDirection = Vector3.Cross(slopeNormal, directionRight);
         return correctDirection.normalized;
@@ -176,16 +178,18 @@ public class CharacterMovement : MonoBehaviour
         }
     }
 
+#if DEBUG
     private void OnDrawGizmos()
     {
-        if ( Application.isPlaying)
+        if (Application.isPlaying)
         {
             Gizmos.color = Color.green;
-            Gizmos.DrawLine(_characterController.transform.position, _characterController.velocity + _characterController.transform.position);
-            Gizmos.DrawLine(GetCapsuleBottomHemisphere(), GetCapsuleBottomHemisphere() + _groundNormal);
+            Gizmos.DrawLine(_characterController.transform.position, _characterController.velocity + _characterController.transform.position); // real character direction
+            Gizmos.DrawLine(GetCapsuleBottomHemisphere(), GetCapsuleBottomHemisphere() + _groundNormal); // normal to ground
 
             Gizmos.color = Color.red;
-            Gizmos.DrawLine(transform.position, transform.position + testDir);          
+            Gizmos.DrawLine(transform.position, transform.position + _idealDirection);// ideal character directon          
         }
     }
+#endif
 }
