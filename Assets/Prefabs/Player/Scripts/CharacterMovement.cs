@@ -3,6 +3,8 @@ using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
 using UnityEngine.InputSystem.XR;
 
+
+[RequireComponent(typeof(PlayerInput), typeof(CharacterController))]
 public class CharacterMovement : MonoBehaviour
 {
     [SerializeField]
@@ -14,9 +16,11 @@ public class CharacterMovement : MonoBehaviour
     private CharacterController _characterController;  
 
     public float WalkSpeed;
-    public float SprintSpeed;
+    public float RunSpeed;
+    public float AccelerationSpeedOnGround;
     public float JumpHeight;
-    public float AirSpeed;
+    //public float AirSpeed;
+    public float AccelerationSpeedInAir;
     public float Gravity;
     public float GroundCheckDistance = 0.05f;
     public float GroundCheckDistanceInAir = 0.01f;
@@ -28,10 +32,12 @@ public class CharacterMovement : MonoBehaviour
     [Range(0f, 100f)]
     public float MouseHorizontalSensitivity;
 
+    private Vector3 _characterSpeed;
     private float _pitch;
-    private Vector3 _groundNormal;
     private float _lastTimeJumped;
-    //private float _characterSpeed;
+    private Vector3 _groundNormal;
+    private bool _isRunning;
+    private bool _isUnderSlopeLimit;
 
 #if DEBUG
     private Vector3 _idealDirection;
@@ -55,7 +61,7 @@ public class CharacterMovement : MonoBehaviour
         GroundCheck();
 
         Rotate();
-        Walk();        
+        HandleMovement();        
     }
 
     void GroundCheck()
@@ -67,6 +73,7 @@ public class CharacterMovement : MonoBehaviour
         // reset values before the ground check
         IsGrounded = false;
         _groundNormal = Vector3.up;
+        _isUnderSlopeLimit = true;
 
         // only try to detect ground if it's been a short amount of time since last jump; otherwise we may snap to the ground instantly after we try jumping
         if (Time.time >= _lastTimeJumped + JumpGroundingPreventionTime)
@@ -78,13 +85,14 @@ public class CharacterMovement : MonoBehaviour
             {
                 // storing the upward direction for the surface found
                 _groundNormal = hit.normal;
+                _isUnderSlopeLimit = IsNormalUnderSlopeLimit(_groundNormal);
 
                 // Only consider this a valid ground hit if the ground normal goes in the same direction as the character up
                 // and if the slope angle is lower than the character controller's limit
-                if (Vector3.Dot(hit.normal, transform.up) > 0f &&
-                    IsNormalUnderSlopeLimit(_groundNormal))
-                {
+                if (Vector3.Dot(hit.normal, transform.up) > 0f && _isUnderSlopeLimit)
+                {                   
                     IsGrounded = true;
+                    _characterSpeed.y = 0f;
 
                     // handle snapping to the ground
                     if (hit.distance > _characterController.skinWidth)
@@ -111,33 +119,34 @@ public class CharacterMovement : MonoBehaviour
         return transform.position + (transform.up * (atHeight - _characterController.radius));
     }
 
-    private Vector3 ApplyGravity(Vector3 direction)
+    private void HandleMovement()
     {
-        direction.y = _characterController.velocity.y - Gravity;
-        return direction;
-    }
-
-    private void Walk()
-    {
-        Vector2 readedDirection = _walkAction.ReadValue<Vector2>();
+        Vector2 readedDirection = _walkAction.ReadValue<Vector2>().normalized;
         Vector3 direction = transform.rotation.normalized * new Vector3(readedDirection.x, 0, readedDirection.y);
 
         if (IsGrounded) 
         {
-            direction *= WalkSpeed;
-            direction = GetDirectionReorientedOnSlope(direction.normalized, _groundNormal) * direction.magnitude;
+            Vector3 movementSpeed = (_isRunning ? RunSpeed : WalkSpeed) * direction;
+            _characterSpeed = Vector3.Lerp(_characterSpeed, movementSpeed, AccelerationSpeedOnGround * Time.deltaTime);
+            _characterSpeed = GetDirectionReorientedOnSlope(_characterSpeed.normalized, _groundNormal) * _characterSpeed.magnitude;
         }
         else
         {
-            direction *= AirSpeed;
-            direction.y += _characterController.velocity.y - Gravity;
+            _characterSpeed += AccelerationSpeedInAir * direction * Time.deltaTime;
+            Vector3 gravityDir = Vector3.down * Gravity * Time.deltaTime;
+            if (!_isUnderSlopeLimit) 
+            {
+                gravityDir = GetDirectionReorientedOnSlope(_groundNormal, _groundNormal) * gravityDir.magnitude;
+            }
+
+            _characterSpeed += gravityDir;
         }
 
 #if DEBUG
-        _idealDirection = direction;
+        _idealDirection = _characterSpeed;
 #endif
 
-        _characterController.Move(direction * Time.deltaTime);  
+        _characterController.Move(_characterSpeed * Time.deltaTime);  
 
         if (_characterController.velocity.magnitude > 1 && IsGrounded) _animator.SetBool("IsWalking", true);
         else
@@ -173,8 +182,20 @@ public class CharacterMovement : MonoBehaviour
             if (IsGrounded)
             {
                 _lastTimeJumped = Time.time;
-                _characterController.Move((Vector3.up * JumpHeight + _characterController.velocity) * Time.deltaTime);
+                _characterSpeed += Vector3.up * JumpHeight;
             }
+        }
+    }
+
+    public void Run(InputAction.CallbackContext context)
+    {
+        if (context.started)
+        {
+            _isRunning = true;
+        }
+        else if (context.canceled)
+        {
+            _isRunning = false;
         }
     }
 
