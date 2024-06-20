@@ -1,3 +1,5 @@
+using GLTFast;
+using Unity.Mathematics;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
@@ -121,8 +123,8 @@ public class CharacterMovement : MonoBehaviour
 
     private void HandleMovement()
     {
-        Vector2 readedDirection = _walkAction.ReadValue<Vector2>().normalized;
-        Vector3 direction = transform.rotation.normalized * new Vector3(readedDirection.x, 0, readedDirection.y);
+        Vector2 readedDirection = _walkAction.ReadValue<Vector2>();
+        Vector3 direction = transform.rotation.normalized * new Vector3(readedDirection.x, 0, readedDirection.y).normalized;
 
         if (IsGrounded) 
         {
@@ -136,7 +138,8 @@ public class CharacterMovement : MonoBehaviour
             Vector3 gravityDir = Vector3.down * Gravity * Time.deltaTime;
             if (!_isUnderSlopeLimit) 
             {
-                gravityDir = GetDirectionReorientedOnSlope(_groundNormal, _groundNormal) * gravityDir.magnitude;
+                //gravityDir = GetDirectionReorientedOnSlope(_groundNormal, _groundNormal) * gravityDir.magnitude;
+                gravityDir = Vector3.ProjectOnPlane(gravityDir, _groundNormal);
             }
 
             _characterSpeed += gravityDir;
@@ -146,14 +149,23 @@ public class CharacterMovement : MonoBehaviour
         _idealDirection = _characterSpeed;
 #endif
 
-        _characterController.Move(_characterSpeed * Time.deltaTime);  
+        _characterController.Move(_characterSpeed * Time.deltaTime);
 
-        if (_characterController.velocity.magnitude > 1 && IsGrounded) _animator.SetBool("IsWalking", true);
-        else
+        //if (_characterController.velocity.magnitude > 1 && IsGrounded) _animator.SetBool("IsWalking", true);
+        //else
+        //{
+        //    _animator.StopPlayback();
+        //    _animator.SetBool("IsWalking", false);
+        //}
+        if (Input.GetMouseButtonDown(0)) 
         {
-            _animator.StopPlayback();
-            _animator.SetBool("IsWalking", false);
+            int a = 1;
         }
+        var blendCoefZ = math.remap(0, WalkSpeed, 0, 1, _characterSpeed.magnitude) * readedDirection.y;
+        var blendCoefX = math.remap(0, WalkSpeed, 0, 1, _characterSpeed.magnitude) * readedDirection.x;
+        
+        _animator.SetFloat("Velocity Z", blendCoefZ);
+        _animator.SetFloat("Velocity X", blendCoefX);
     }
 
     public Vector3 GetDirectionReorientedOnSlope(Vector3 direction, Vector3 slopeNormal)
